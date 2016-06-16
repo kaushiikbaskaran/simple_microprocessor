@@ -25,7 +25,7 @@ module simple_uprocessor (KEY, HEX0, HEX1, HEX2, HEX3, CLOCK_50, LEDR, LEDG);
 	initial pc= 8'd8;        // MAR starts with value 8
 	initial mdr=16'd65535;
 	
-	reg [23:0] cc;
+	reg [23:0] cc;           // Condition codes are set if result is negative, zero or positive
 	
 	reg [15:0] mdridde;       // 16-bit MDR register linking Instruction Fetch & Decode stages
 	reg [15:0] mdrdeex;     // 16-bit MDR register linking Decode & Execute stages
@@ -33,11 +33,10 @@ module simple_uprocessor (KEY, HEX0, HEX1, HEX2, HEX3, CLOCK_50, LEDR, LEDG);
 	reg [15:0] mdrmemwb; // 16-bit MDR register linking Memory & WriteBack stages
 	
 	reg [10:0]nextpc1;
-	reg [10:0]nextpc1copy;
 	
 	reg [15:0] registers[0:7];  
 	reg [15:0] registers1;
-	reg flag;
+	reg flag;             // Indicates if pipeline is stalled
 	integer czero=0;
 	integer cpos=0;
 		
@@ -67,9 +66,9 @@ module simple_uprocessor (KEY, HEX0, HEX1, HEX2, HEX3, CLOCK_50, LEDR, LEDG);
 	
 	/*********************************Instruction Fetch Stage **************************************/
 	
-	always @(posedge CLOCK_50) 
-	// always @(posedge KEY[0])   /* For Debug - Manual increment of cycles */ 
-	begin
+		always @(posedge CLOCK_50) 
+		// always @(posedge KEY[0])   /* For Debug - Manual increment of cycles */ 
+		begin
 			mdr = mem[pc];
 			/* Check for Data dependency\ Control dependency & Branching scenarios*/
 			if((mdr!=16'd0) && 
@@ -93,6 +92,7 @@ module simple_uprocessor (KEY, HEX0, HEX1, HEX2, HEX3, CLOCK_50, LEDR, LEDG);
 				((mdr[8:6]==mdrexmem[11:9] || mdr[11:9]==mdrexmem[11:9])&&mdrexmem!=0) ||
 				((mdr[8:6]==mdrmemwb[11:9] ||   mdr[11:9]==mdrmemwb[11:9])&&mdrmemwb!=0))))) 
 			begin
+				/* Stall pipeline if Data or Control or Branch is detected */
 				mdridde<=16'd0;
 				if (flag==0)
 				begin
@@ -106,217 +106,218 @@ module simple_uprocessor (KEY, HEX0, HEX1, HEX2, HEX3, CLOCK_50, LEDR, LEDG);
 			end
 			else
 			begin
+				/* Check for Branching - based on ISA opcodes for BR command */
 				if((mdr[15:12]==4'd0) &&((mdr[11]==1'd1) || (mdr[10]==1'd1) || (mdr[9]==1'd1)) && mdr!=16'd0) 
 				begin
 					flag=0;
-					if(nextpc1!=10'd0 )//&& (nextpc1copy!=nextpc1))
+					/* If BR command has been decoded - jump to the new PC (offset coming from BR opcode)  */
+					if(nextpc1!=10'd0 )
 					begin
-					if( (mdr[11]==1'd1 && cc[2]==1) || (mdr[10]==1 && cc[1]==1) || (mdr[9]==1 && cc[0]==1)) 
+						/* Checking condition codes & BR opcode based on ISA */
+						if( (mdr[11]==1'd1 && cc[2]==1) || (mdr[10]==1 && cc[1]==1) || (mdr[9]==1 && cc[0]==1)) 
+						begin
+							if (pc+nextpc1>=8'd126)
+							begin 
+								pc=126;
+							end
+							else	
+							begin					
+								pc = pc + nextpc1;
+								mdridde<=16'd0;
+							end
+						end	
+					end			
+					else
 					begin
-						if (pc+nextpc1>=8'd126)
-						begin 
-							pc=126;
-						end
-						else	
-						begin					
-							pc = pc + nextpc1;
-							mdridde<=16'd0;
-						end
-					end	
-				end			
+						mdridde<=mdr;
+						pc=pc;
+					end
+				end
 				else
 				begin
-					mdridde<=mdr;
-					pc=pc;
-				end
+					/* No Branching - increment the PC to fetch next instruction */
+					flag=0;
+					if (pc>=126)
+					begin 
+						pc=126;
+					end
+					pc= pc+1;
+					mdridde<=mdr;  // Update the pipeline register with the instruction
+				end	
 			end
-			else
-			begin
-				flag=0;
-				if (pc>=126)
-				begin 
-					pc=126;
-				end
-				pc= pc+1;
-				mdridde<=mdr;
-			end	
 		end
-	end
+				
 			
-			
-	//Operand fetch
-	always @(posedge CLOCK_50) 
-	//always @(posedge KEY[0]) 
-	begin
-		
+	/*********************************Operand Fetch Stage **************************************/
+		always @(posedge CLOCK_50) 
+		//always @(posedge KEY[0]) /* For Debug - Manual increment of cycles */ 
+		begin
 			if(mdridde != 16'd0)
 			begin
-					if(mdridde[15:12]==4'd1)
+				/* ADD is only command with valid operands */ 
+				if(mdridde[15:12]==4'd1)
+				begin
+					/* Operand1 - converted from binary to decimal */
+					oper1<=registers[mdridde[8]*4+mdridde[7]*2+mdridde[6]];
+					/* Bit position 5 determines if ADD immediate or ADD with operand2 */
+					if(mdridde[5]==0)
 					begin
-							oper1<=registers[mdridde[8]*4+mdridde[7]*2+mdridde[6]];
-							if(mdridde[5]==0)
-							begin
-									oper2<=registers[mdridde[2]*4+mdridde[1]*2+mdridde[0]];
-							end
-							else
-							begin
-									oper2<=$signed(mdridde[4:0]);
-							end
+						/* Operand1 - converted from binary to decimal */
+						oper2<=registers[mdridde[2]*4+mdridde[1]*2+mdridde[0]];
 					end
-			end
-			mdrdeex<=mdridde;
-	end
-	
-	//Execution
-	always @(posedge CLOCK_50) 
-	//always @(posedge KEY[0]) 
-	begin
-				if(mdrdeex != 16'd0)
-				begin
-						if(mdrdeex[15:12]==4'd0 && mdrdeex!=16'd0)
-						begin
-								nextpc1=($signed(mdrdeex[8:0])+1);
-								
-						end
-						else
-						begin
-								nextpc1 <=10'd0;			
-						end
-		
-						if(mdrdeex[15:12]==4'd1)
-						begin
-								oper3=oper1+oper2;
-						end
-			
-						if (mdrdeex[15:12]==4'd6)
-						begin
-								oper3=registers[mdrdeex[8]*4+mdrdeex[7]*2+mdrdeex[6]]+($signed(mdrdeex[5:0])<<1);
-						end
-						
-						if (mdrdeex[15:12]==4'd7)
-						begin
-								oper3=registers[mdrdeex[8]*4+mdrdeex[7]*2+mdrdeex[6]]+($signed(mdrdeex[5:0])<<1);
-						end
-				
-						result<=oper3;
+					else
+					begin
+						oper2<=$signed(mdridde[4:0]);
+					end
 				end
-				mdrexmem <= mdrdeex;
-	end
-	
-	//Memory operation
-	always @(posedge CLOCK_50)
-	//always @(posedge KEY[0]) 
-	begin
-				if(mdrexmem != 16'd0)
-				begin
-						if (mdrexmem[15:12]==4'd6)
-						begin
-								oper4=mem[result[15:0]];
-								if(oper4[15]==1)
-								begin
-										cc[2]=1'd1;
-										cc[1]=1'd0;
-										cc[0]=1'd0;
-								end
-								if (oper4[15:0]==16'd0)
-								begin
-												czero=1;
-												//cpos=0;
-												cc[2]=1'd0;
-												cc[1]=1'd1;
-												cc[0]=1'd0;
-								end
-								
-								else 
-								begin 
-								if (oper4[15]==0 && oper4[15:0]!=16'd0)
-								begin
-										cc[2]=1'd0;
-										cc[1]=1'd0;
-										cc[0]=1'd1;
-								end
-								end
-								result1<=oper4;
-						end
-			
-						if (mdrexmem[15:12]==4'd7)
-						begin
-								mem[result[15:0]]=registers[mdrexmem[11]*4+mdrexmem[10]*2+mdrexmem[9]];
-						end
-						
-						if (mdrexmem[15:12]==4'd1)
-						begin	
-								oper4=result;
-								if(oper4[15]==1)
-								begin
-												cc[2]=1'd1;
-												cc[1]=1'd0;
-												cc[0]=1'd0;
-												cpos=0;
-												czero=0;
-								end
-								if (oper4[15:0]==16'd0)
-								begin
-												czero=1;
-												//cpos=0;
-												cc[2]=1'd0;
-												cc[1]=1'd1;
-												cc[0]=1'd0;
-								end
-								
-								else 
-								begin 
-								if (oper4[15]==0 && oper4[15:0]!=16'd0)
-								begin
-										//		cpos=1;
-											//	czero=0;
-												cc[2]=1'd0;
-												cc[1]=1'd0;
-												cc[0]=1'd1;
-								end
-								end
-								result1<= oper4;
-						end
 			end
-			mdrmemwb <= mdrexmem;
-	end
+			mdrdeex<=mdridde;  // Update the pipeline register with the instruction
+		end
 	
-	//Write Back
-	always @(posedge CLOCK_50) 
-	//always @(posedge KEY[0]) 
-	begin
-				if(mdrmemwb !=16'd0)
+	/*********************************Execution Stage **************************************/
+		always @(posedge CLOCK_50) 
+		//always @(posedge KEY[0]) /* For Debug - Manual increment of cycles */ 
+		begin
+			if(mdrdeex != 16'd0)
+			begin
+				/* BR Instruction Handling */
+				if(mdrdeex[15:12]==4'd0 && mdrdeex!=16'd0)
 				begin
-						if (mdrmemwb [15:12]==4'd6)
-						begin
-											registers[mdrmemwb [11]*4+mdrmemwb [10]*2+mdrmemwb [9]]<=result1[15:0];
-						end
-						if(mdrmemwb [15:12]==4'd1)
-						begin
-											registers[mdrmemwb [11]*4+mdrmemwb [10]*2+mdrmemwb [9]]<=result1[15:0];
-						end
+					nextpc1=($signed(mdrdeex[8:0])+1);
 				end
-	end
+				else
+				begin
+					nextpc1 <=10'd0;			
+				end
+				/* ADD Instruction Handling */
+				if(mdrdeex[15:12]==4'd1)
+				begin
+					oper3=oper1+oper2;
+				end
+				/* LD Instruction Handling */
+				if (mdrdeex[15:12]==4'd6)
+				begin
+					oper3=registers[mdrdeex[8]*4+mdrdeex[7]*2+mdrdeex[6]]+($signed(mdrdeex[5:0])<<1);
+				end
+				/* ST Instruction Handling */
+				if (mdrdeex[15:12]==4'd7)
+				begin
+					oper3=registers[mdrdeex[8]*4+mdrdeex[7]*2+mdrdeex[6]]+($signed(mdrdeex[5:0])<<1);
+				end
+				result<=oper3;
+			end
+			mdrexmem <= mdrdeex; // Update the pipeline register with the instruction
+		end
 	
-	//Change this according to which register needs to be displayed.
-		
-		//Use this for test2.mif
-		assign LEDG[7:0]=registers[5][7:0];
+	/*********************************Memory Operation Stage **************************************/
+		always @(posedge CLOCK_50)
+		//always @(posedge KEY[0]) /* For Debug - Manual increment of cycles */ 
+		begin
+			if(mdrexmem != 16'd0)
+			begin
+				/* LD Instruction Handling */
+				if (mdrexmem[15:12]==4'd6)
+				begin
+					/* Load the value from memory */
+					oper4=mem[result[15:0]];
+					/* Update condition codes based on loaded memory is +ve,-ve or 0 */
+					if(oper4[15]==1)
+					begin
+						cc[2]=1'd1;
+						cc[1]=1'd0;
+						cc[0]=1'd0;
+					end
+					if (oper4[15:0]==16'd0)
+					begin
+						czero=1;
+						cc[2]=1'd0;
+						cc[1]=1'd1;
+						cc[0]=1'd0;
+					end
+					else 
+					begin 
+						if (oper4[15]==0 && oper4[15:0]!=16'd0)
+						begin
+							cc[2]=1'd0;
+							cc[1]=1'd0;
+							cc[0]=1'd1;
+						end
+					end
+					result1<=oper4;
+				end
+				/* ST Instruction Handling */
+				if (mdrexmem[15:12]==4'd7)
+				begin
+					/* Store the value into memory */
+					mem[result[15:0]]=registers[mdrexmem[11]*4+mdrexmem[10]*2+mdrexmem[9]];
+				end
+				/* ADD Instruction Handling */
+				if (mdrexmem[15:12]==4'd1)
+				begin	
+					oper4=result;
+					/* Update condition codes based on loaded memory is +ve,-ve or 0 */
+					if(oper4[15]==1)
+					begin
+						cc[2]=1'd1;
+						cc[1]=1'd0;
+						cc[0]=1'd0;
+						cpos=0;
+						czero=0;
+					end
+					if (oper4[15:0]==16'd0)
+					begin
+						czero=1;
+						cc[2]=1'd0;
+						cc[1]=1'd1;
+						cc[0]=1'd0;
+					end
+					else 
+					begin 
+						if (oper4[15]==0 && oper4[15:0]!=16'd0)
+						begin
+							cc[2]=1'd0;
+							cc[1]=1'd0;
+							cc[0]=1'd1;
+						end
+					end
+					result1<= oper4;
+				end
+			end
+			mdrmemwb <= mdrexmem; // Update the pipeline register with the instruction
+		end
+	
+	/*********************************Write Back Stage **************************************/
+		always @(posedge CLOCK_50) 
+		//always @(posedge KEY[0])  /* For Debug - Manual increment of cycles */ 
+		begin
+			if(mdrmemwb !=16'd0)
+			begin
+				/* LD Instruction Handling */
+				if (mdrmemwb [15:12]==4'd6)
+				begin
+					registers[mdrmemwb [11]*4+mdrmemwb [10]*2+mdrmemwb [9]]<=result1[15:0];
+				end
+				/* ADD Instruction Handling */
+				if(mdrmemwb [15:12]==4'd1)
+				begin
+					registers[mdrmemwb [11]*4+mdrmemwb [10]*2+mdrmemwb [9]]<=result1[15:0];
+				end
+			end
+		end	
+	
+	/* Microprocessor pipeline for current cycle is complete at this stage   *
+	 * This section outputs the value of registers                           */
+	
+		//Change this according to which register needs to be displayed.
+		assign LEDG[7:0]=registers[5][7:0];     // Register 5 is picked for example.  
 		assign LEDR[7:0]=registers[5][15:8];
 
-		
+		/* 7 segment display can output registers */
 		SevenSeg sseg0(.IN(registers[1][3:0]),.OUT(HEX0));
 		SevenSeg sseg1(.IN(registers[4][3:0]),.OUT(HEX1));
 		SevenSeg sseg2(.IN(registers[6][3:0]),.OUT(HEX2));
 		SevenSeg sseg3(.IN(registers[7][3:0]),.OUT(HEX3));
 		
-		
-		//Use this for test1.mif
-		/*SevenSeg sseg0(.IN(registers[1][3:0]),.OUT(HEX0));
-		SevenSeg sseg1(.IN(registers[2][3:0]),.OUT(HEX1));
-		SevenSeg sseg2(.IN(registers[3][3:0]),.OUT(HEX2));
-		SevenSeg sseg3(.IN(registers[4][3:0]),.OUT(HEX3));*/
-	
 endmodule
 
 
