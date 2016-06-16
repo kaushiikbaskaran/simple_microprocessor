@@ -82,12 +82,12 @@ module simple_uprocessor (KEY, HEX0, HEX1, HEX2, HEX3, CLOCK_50, LEDR, LEDG);
 				(mdr[8:6]==mdridde[11:9] ||  mdr[8:6]==mdrdeex[11:9] || mdr[8:6]==mdrexmem[11:9] ||
 				mdr[8:6]==mdrmemwb[11:9] || mdr[11:9]==mdridde[11:9] || mdr[11:9]==mdrdeex[11:9] || 
 				mdr[11:9]==mdrexmem[11:9] || mdr[11:9]==mdrmemwb[11:9])) ||
-			/*ld check starts*/ (mdr[15:12]==4'd6 && 
+			/*LOAD check starts*/ (mdr[15:12]==4'd6 && 
 				(((mdr[8:6]==mdridde[11:9] || mdr[11:9]==mdridde[11:9]) && mdridde!=0)        ||
 				((mdr[8:6]==mdrdeex[11:9] || mdr[11:9]==mdrdeex[11:9]) && mdrdeex!=0)         || 
 				((mdr[8:6]==mdrexmem[11:9] || mdr[11:9]==mdrexmem[11:9]) && mdrexmem!=0)      ||
 				((mdr[8:6]==mdrmemwb[11:9] ||   mdr[11:9]==mdrmemwb[11:9]) && mdrmemwb!=0)))  ||
-			/*St check starts */ (mdr[15:12]==4'd7 && 
+			/*STORE check starts */ (mdr[15:12]==4'd7 && 
 				(((mdr[8:6]==mdridde[11:9] || mdr[11:9]==mdridde[11:9]) &&mdridde!=0) ||  
 				((mdr[8:6]==mdrdeex[11:9] || mdr[11:9]==mdrdeex[11:9])&&mdrdeex!=0) || 
 				((mdr[8:6]==mdrexmem[11:9] || mdr[11:9]==mdrexmem[11:9])&&mdrexmem!=0) ||
