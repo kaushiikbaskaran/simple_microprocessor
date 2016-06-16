@@ -3,9 +3,9 @@
  *   output [7:0] HEX0,HEX1,HEX2,HEX3                                  *
  *        - Output to 7 segment display on output of computation       * 
  *                                                                     * 
- * 	output  [7:0] LEDR, LEDG                                           *
+ * 	output  [7:0] LEDR, LEDG                                       *
  *        - Binary output to LED                                       *
-*                                                                     * 
+ *                                                                     * 
  *    input [5:0] KEY                                                  *
  *        - Increment cycles manually - to debug different stages      *
  *          of pipeline                                                *
@@ -14,36 +14,28 @@
  *        -  50MHz clock signal                                        *
  *                                                                     */
 module simple_uprocessor (KEY, HEX0, HEX1, HEX2, HEX3, CLOCK_50, LEDR, LEDG);
-  output [7:0] HEX0, HEX1, HEX2, HEX3; 
+           output [7:0] HEX0, HEX1, HEX2, HEX3; 
 	output  [7:0] LEDR;
 	output  [7:0] LEDG;
 	input [5:0] KEY;
 	input  CLOCK_50;
-	(* ram_init_file = "test2.mif" *)
 	reg [15:0] mem[0:127]; // 1024-entry, 16-bit memory
-	reg [15:0] mdr; // 16-bit MDR register
-	reg [7:0] pc; // 10-bit MAR register
-	initial pc= 8'd8; // MAR starts with value zero
+	reg [15:0] mdr;         // 16-bit MDR register
+	reg [7:0] pc;             // 8-bit MAR register
+	initial pc= 8'd8;        // MAR starts with value 8
 	initial mdr=16'd65535;
-	reg[32:0] count;
 	
 	reg [23:0] cc;
-	reg [7:0] pcidde; // 10-bit MAR register
-	reg [7:0] pcdeex; // 10-bit MAR register
-	reg [7:0] pcexld; // 10-bit MAR register
-	reg [7:0] pccopy; // 10-bit MAR register
 	
-	reg [15:0] mdridde; // 16-bit MDR register
-	reg [15:0] mdr1; // 16-bit MDR register
-	reg [15:0] mdrdeex; // 16-bit MDR register
-	reg [15:0] mdrexmem; // 16-bit MDR register
-	reg [15:0] mdrmemwb; // 16-bit MDR register
+	reg [15:0] mdridde;       // 16-bit MDR register linking Instruction Fetch & Decode stages
+	reg [15:0] mdrdeex;     // 16-bit MDR register linking Decode & Execute stages
+	reg [15:0] mdrexmem; // 16-bit MDR register linking Execute & Memory stages
+	reg [15:0] mdrmemwb; // 16-bit MDR register linking Memory & WriteBack stages
 	
-	reg [7:0]nextpc;
 	reg [10:0]nextpc1;
 	reg [10:0]nextpc1copy;
 	
-		reg [15:0] registers[0:7];
+	reg [15:0] registers[0:7];  
 	reg [15:0] registers1;
 	reg flag;
 	integer czero=0;
@@ -51,21 +43,19 @@ module simple_uprocessor (KEY, HEX0, HEX1, HEX2, HEX3, CLOCK_50, LEDR, LEDG);
 		
 	initial 
 	begin 
-	nextpc=8'd10;
-	count<=32'd0;
 	cc=4'd0;
-	mdridde=16'd0;//65535;
-		mdr1=16'd0;//d65535;
-	mdrdeex=16'd0;//d65535;	
+	mdridde=16'd0;
+	mdr1=16'd0;
+	mdrdeex=16'd0;	
 	flag =1'd0;
-	registers[0] = 8'd0; // MAR starts with value zero
-	registers[1] = 8'd0; // MAR starts with value zero
-	registers[2] = 8'd0; // MAR starts with value zero
-	registers[3] = 8'd0; // MAR starts with value zero
-	registers[4] = 8'd0; // MAR starts with value zero
-	registers[5] = 8'd0; // MAR starts with value zero
-	registers[6] = 8'd0; // MAR starts with value zero
-	registers[7] = 8'd0; // MAR starts with value zero
+	registers[0] = 8'd0;
+	registers[1] = 8'd0; 
+	registers[2] = 8'd0;
+	registers[3] = 8'd0;
+	registers[4] = 8'd0;
+	registers[5] = 8'd0; 
+	registers[6] = 8'd0;
+	registers[7] = 8'd0;
 	end
 	
 	reg [16:0]oper1;
@@ -75,74 +65,83 @@ module simple_uprocessor (KEY, HEX0, HEX1, HEX2, HEX3, CLOCK_50, LEDR, LEDG);
 	reg [16:0] result;
 	reg [16:0] result1;
 	
-	//always @(posedge KEY[0]) 
-	//begin
-	//Instruction Fetch
+	/*********************************Instruction Fetch Stage **************************************/
 	
 	always @(posedge CLOCK_50) 
-	//always @(posedge KEY[0]) 
+	// always @(posedge KEY[0])   /* For Debug - Manual increment of cycles */ 
 	begin
-	
 			mdr = mem[pc];
-			if((mdr!=16'd0)&&(/*Add 1 check*/(mdr[15:12]==4'd1 && mdr[5]==0 &&(mdr[8:6]==mdridde[11:9] ||   mdr[8:6]==mdrdeex[11:9] || mdr[8:6]==mdrexmem[11:9] || mdr[8:6]==mdrmemwb[11:9] || mdr[2:0]==mdridde[11:9] ||   mdr[2:0]==mdrdeex[11:9] || mdr[2:0]==mdrexmem[11:9] ||  mdr[2:0]==mdrmemwb[11:9] || mdr[11:9]==mdridde[11:9] || mdr[11:9]==mdrdeex[11:9] || mdr[11:9]==mdrexmem[11:9] || mdr[11:9]==mdrmemwb[11:9])) 
-				/*Add	2 check */ || (mdr[15:12]==4'd1 && mdr[5]==1 &&(mdr[8:6]==mdridde[11:9] ||   mdr[8:6]==mdrdeex[11:9] || mdr[8:6]==mdrexmem[11:9] || mdr[8:6]==mdrmemwb[11:9] || mdr[11:9]==mdridde[11:9] || mdr[11:9]==mdrdeex[11:9] || mdr[11:9]==mdrexmem[11:9] || mdr[11:9]==mdrmemwb[11:9])) 
-				/*ld check starts*/ ||(mdr[15:12]==4'd6 && (((mdr[8:6]==mdridde[11:9] || mdr[11:9]==mdridde[11:9]) &&mdridde!=0) ||  ((mdr[8:6]==mdrdeex[11:9] || mdr[11:9]==mdrdeex[11:9])&&mdrdeex!=0) || ((mdr[8:6]==mdrexmem[11:9] || mdr[11:9]==mdrexmem[11:9])&&mdrexmem!=0) ||((mdr[8:6]==mdrmemwb[11:9] ||   mdr[11:9]==mdrmemwb[11:9])&&mdrmemwb!=0)))
-				/*St check starts */ ||(mdr[15:12]==4'd7 && (((mdr[8:6]==mdridde[11:9] || mdr[11:9]==mdridde[11:9]) &&mdridde!=0) ||  ((mdr[8:6]==mdrdeex[11:9] || mdr[11:9]==mdrdeex[11:9])&&mdrdeex!=0) || ((mdr[8:6]==mdrexmem[11:9] || mdr[11:9]==mdrexmem[11:9])&&mdrexmem!=0) ||((mdr[8:6]==mdrmemwb[11:9] ||   mdr[11:9]==mdrmemwb[11:9])&&mdrmemwb!=0))))) 
+			/* Check for Data dependency\ Control dependency & Branching scenarios*/
+			if((mdr!=16'd0) && 
+			(/*Add 1 check*/(mdr[15:12]==4'd1 && mdr[5]==0 && 
+				(mdr[8:6]==mdridde[11:9] || mdr[8:6]==mdrdeex[11:9] || mdr[8:6]==mdrexmem[11:9] ||
+				mdr[8:6]==mdrmemwb[11:9] || mdr[2:0]==mdridde[11:9] || mdr[2:0]==mdrdeex[11:9] || 
+				mdr[2:0]==mdrexmem[11:9] || mdr[2:0]==mdrmemwb[11:9] || mdr[11:9]==mdridde[11:9] || 
+				mdr[11:9]==mdrdeex[11:9] || mdr[11:9]==mdrexmem[11:9] || mdr[11:9]==mdrmemwb[11:9])) ||
+			/*Add 2 check */(mdr[15:12]==4'd1 && mdr[5]==1 &&
+				(mdr[8:6]==mdridde[11:9] ||  mdr[8:6]==mdrdeex[11:9] || mdr[8:6]==mdrexmem[11:9] ||
+				mdr[8:6]==mdrmemwb[11:9] || mdr[11:9]==mdridde[11:9] || mdr[11:9]==mdrdeex[11:9] || 
+				mdr[11:9]==mdrexmem[11:9] || mdr[11:9]==mdrmemwb[11:9])) ||
+			/*ld check starts*/ (mdr[15:12]==4'd6 && 
+				(((mdr[8:6]==mdridde[11:9] || mdr[11:9]==mdridde[11:9]) && mdridde!=0)        ||
+				((mdr[8:6]==mdrdeex[11:9] || mdr[11:9]==mdrdeex[11:9]) && mdrdeex!=0)         || 
+				((mdr[8:6]==mdrexmem[11:9] || mdr[11:9]==mdrexmem[11:9]) && mdrexmem!=0)      ||
+				((mdr[8:6]==mdrmemwb[11:9] ||   mdr[11:9]==mdrmemwb[11:9]) && mdrmemwb!=0)))  ||
+			/*St check starts */ (mdr[15:12]==4'd7 && 
+				(((mdr[8:6]==mdridde[11:9] || mdr[11:9]==mdridde[11:9]) &&mdridde!=0) ||  
+				((mdr[8:6]==mdrdeex[11:9] || mdr[11:9]==mdrdeex[11:9])&&mdrdeex!=0) || 
+				((mdr[8:6]==mdrexmem[11:9] || mdr[11:9]==mdrexmem[11:9])&&mdrexmem!=0) ||
+				((mdr[8:6]==mdrmemwb[11:9] ||   mdr[11:9]==mdrmemwb[11:9])&&mdrmemwb!=0))))) 
 			begin
-					mdridde<=16'd0;
-					if (flag==0)
-					begin
-							if (pc>=126)
-							begin 
-										pc=126;
-							end
-							pc=pc;
-							flag=1;
+				mdridde<=16'd0;
+				if (flag==0)
+				begin
+					if (pc>=126)
+					begin 
+						pc=126;
 					end
+					pc=pc;
+					flag=1;
+				end
 			end
 			else
 			begin
-						if((mdr[15:12]==4'd0) &&((mdr[11]==1'd1) || (mdr[10]==1'd1) || (mdr[9]==1'd1)) && mdr!=16'd0) 
-						begin
-							flag=0;
-							if(nextpc1!=10'd0 )//&& (nextpc1copy!=nextpc1))
-							begin
-						
-								if( (mdr[11]==1'd1 && cc[2]==1) || (mdr[10]==1 && cc[1]==1) || (mdr[9]==1 && cc[0]==1)) 
-										begin
-												if (pc+nextpc1>=8'd126)
-												begin 
-															pc=126;
-												end
-												else	
-												begin					
-														pc = pc + nextpc1;
-														mdridde<=16'd0;
-														
-												end
-										end	
-							end			
-							else
-							begin
-									mdridde<=mdr;
-									pc=pc;
-							end
-						
+				if((mdr[15:12]==4'd0) &&((mdr[11]==1'd1) || (mdr[10]==1'd1) || (mdr[9]==1'd1)) && mdr!=16'd0) 
+				begin
+					flag=0;
+					if(nextpc1!=10'd0 )//&& (nextpc1copy!=nextpc1))
+					begin
+					if( (mdr[11]==1'd1 && cc[2]==1) || (mdr[10]==1 && cc[1]==1) || (mdr[9]==1 && cc[0]==1)) 
+					begin
+						if (pc+nextpc1>=8'd126)
+						begin 
+							pc=126;
 						end
-						else
-						begin
-								flag=0;
-								if (pc>=126)
-								begin 
-										pc=126;
-								end
-								pc= pc+1;
-								mdridde<=mdr;
-						end	
-			
-						
+						else	
+						begin					
+							pc = pc + nextpc1;
+							mdridde<=16'd0;
+						end
+					end	
+				end			
+				else
+				begin
+					mdridde<=mdr;
+					pc=pc;
+				end
 			end
+			else
+			begin
+				flag=0;
+				if (pc>=126)
+				begin 
+					pc=126;
+				end
+				pc= pc+1;
+				mdridde<=mdr;
+			end	
 		end
+	end
 			
 			
 	//Operand fetch
